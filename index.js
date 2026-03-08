@@ -61,11 +61,19 @@ app.post('/api/score', async (req, res) => {
 app.get('/api/leaderboard', async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 50, 100);
+    const diff = req.query.difficulty;
     if (useDB) {
-      const r = await pool.query('SELECT name, score, difficulty, date FROM scores ORDER BY score DESC LIMIT $1', [limit]);
+      let r;
+      if (diff) {
+        r = await pool.query('SELECT name, score, difficulty, date FROM scores WHERE difficulty=$1 ORDER BY score DESC LIMIT $2', [diff, limit]);
+      } else {
+        r = await pool.query('SELECT name, score, difficulty, date FROM scores ORDER BY score DESC LIMIT $1', [limit]);
+      }
       res.json(r.rows);
     } else {
-      res.json(loadScores().slice(0, limit));
+      let scores = loadScores();
+      if (diff) scores = scores.filter(x => x.difficulty === diff);
+      res.json(scores.slice(0, limit));
     }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
