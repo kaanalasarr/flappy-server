@@ -86,6 +86,39 @@ app.get('/api/rank/:name', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/check-name/:name', async (req, res) => {
+  try {
+    const n = String(req.params.name).slice(0, 20);
+    if (useDB) {
+      const r = await pool.query('SELECT name FROM scores WHERE LOWER(name)=LOWER($1)', [n]);
+      res.json({ taken: r.rows.length > 0 });
+    } else {
+      const scores = loadScores();
+      res.json({ taken: scores.some(x => x.name.toLowerCase() === n.toLowerCase()) });
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/register', async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'name gerekli' });
+    const n = String(name).slice(0, 20);
+    if (useDB) {
+      const exists = await pool.query('SELECT name FROM scores WHERE LOWER(name)=LOWER($1)', [n]);
+      if (exists.rows.length > 0) return res.json({ ok: false, error: 'Bu isim zaten alinmis' });
+      await pool.query('INSERT INTO scores (name, score, difficulty, date) VALUES ($1, 0, $2, $3)', [n, 'normal', Date.now()]);
+      res.json({ ok: true });
+    } else {
+      const scores = loadScores();
+      if (scores.some(x => x.name.toLowerCase() === n.toLowerCase())) return res.json({ ok: false, error: 'Bu isim zaten alinmis' });
+      scores.push({ name: n, score: 0, difficulty: 'normal', date: Date.now() });
+      saveScores(scores);
+      res.json({ ok: true });
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/', async (req, res) => {
   try {
     if (useDB) {
