@@ -12,13 +12,25 @@ let pool;
 
 if (useDB) {
   pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-  pool.query(`CREATE TABLE IF NOT EXISTS scores (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(20) NOT NULL UNIQUE,
-    score INTEGER NOT NULL DEFAULT 0,
-    difficulty VARCHAR(10) DEFAULT 'normal',
-    date BIGINT
-  )`).then(() => console.log('DB table ready')).catch(e => console.error('DB init error:', e.message));
+  (async () => {
+    try {
+      await pool.query(`CREATE TABLE IF NOT EXISTS scores (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(20) NOT NULL,
+        score INTEGER NOT NULL DEFAULT 0,
+        difficulty VARCHAR(10) DEFAULT 'normal',
+        date BIGINT,
+        UNIQUE(name, difficulty)
+      )`);
+      await pool.query(`ALTER TABLE scores DROP CONSTRAINT IF EXISTS scores_name_key`);
+      await pool.query(`DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'scores_name_difficulty_key') THEN
+          ALTER TABLE scores ADD CONSTRAINT scores_name_difficulty_key UNIQUE(name, difficulty);
+        END IF;
+      END $$`);
+      console.log('DB table ready');
+    } catch (e) { console.error('DB init error:', e.message); }
+  })();
 }
 
 app.use(cors());
@@ -39,21 +51,22 @@ app.post('/api/score', async (req, res) => {
     if (useDB) {
       await pool.query(
         `INSERT INTO scores (name, score, difficulty, date) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (name) DO UPDATE SET score = GREATEST(scores.score, $2), difficulty = $3, date = $4`,
+         ON CONFLICT (name, difficulty) DO UPDATE SET score = GREATEST(scores.score, $2), date = $4`,
         [n, s, d, Date.now()]
       );
-      const r = await pool.query('SELECT COUNT(*) as rank FROM scores WHERE score > (SELECT score FROM scores WHERE name=$1)', [n]);
+      const r = await pool.query('SELECT COUNT(*) as rank FROM scores WHERE difficulty=$1 AND score > (SELECT score FROM scores WHERE name=$2 AND difficulty=$1)', [d, n]);
       res.json({ ok: true, rank: Number(r.rows[0].rank) + 1 });
     } else {
       const scores = loadScores();
       const entry = { name: n, score: s, difficulty: d, date: Date.now() };
-      const existing = scores.findIndex(x => x.name === n);
+      const existing = scores.findIndex(x => x.name === n && x.difficulty === d);
       if (existing >= 0) { if (s > scores[existing].score) scores[existing] = entry; }
       else scores.push(entry);
       scores.sort((a, b) => b.score - a.score);
       if (scores.length > 500) scores.length = 500;
       saveScores(scores);
-      res.json({ ok: true, rank: scores.findIndex(x => x.name === n) + 1 });
+      const diff_scores = scores.filter(x => x.difficulty === d);
+      res.json({ ok: true, rank: diff_scores.findIndex(x => x.name === n) + 1 });
     }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -80,13 +93,14 @@ app.get('/api/leaderboard', async (req, res) => {
 
 app.get('/api/rank/:name', async (req, res) => {
   try {
+    const diff = req.query.difficulty || 'normal';
     if (useDB) {
-      const r = await pool.query('SELECT score FROM scores WHERE name=$1', [req.params.name]);
+      const r = await pool.query('SELECT score FROM scores WHERE name=$1 AND difficulty=$2', [req.params.name, diff]);
       if (r.rows.length === 0) return res.json({ rank: 0, score: 0 });
-      const cnt = await pool.query('SELECT COUNT(*) as rank FROM scores WHERE score > $1', [r.rows[0].score]);
+      const cnt = await pool.query('SELECT COUNT(*) as rank FROM scores WHERE difficulty=$1 AND score > $2', [diff, r.rows[0].score]);
       res.json({ rank: Number(cnt.rows[0].rank) + 1, score: r.rows[0].score });
     } else {
-      const scores = loadScores();
+      const scores = loadScores().filter(x => x.difficulty === diff);
       const idx = scores.findIndex(x => x.name === req.params.name);
       if (idx < 0) return res.json({ rank: 0, score: 0 });
       res.json({ rank: idx + 1, score: scores[idx].score });
@@ -98,7 +112,7 @@ app.get('/api/check-name/:name', async (req, res) => {
   try {
     const n = String(req.params.name).slice(0, 20);
     if (useDB) {
-      const r = await pool.query('SELECT name FROM scores WHERE LOWER(name)=LOWER($1)', [n]);
+      const r = await pool.query('SELECT name FROM scores WHERE LOWER(name)=LOWER($1) LIMIT 1', [n]);
       res.json({ taken: r.rows.length > 0 });
     } else {
       const scores = loadScores();
@@ -113,15 +127,12 @@ app.post('/api/register', async (req, res) => {
     if (!name) return res.status(400).json({ error: 'name gerekli' });
     const n = String(name).slice(0, 20);
     if (useDB) {
-      const exists = await pool.query('SELECT name FROM scores WHERE LOWER(name)=LOWER($1)', [n]);
+      const exists = await pool.query('SELECT name FROM scores WHERE LOWER(name)=LOWER($1) LIMIT 1', [n]);
       if (exists.rows.length > 0) return res.json({ ok: false, error: 'Bu isim zaten alinmis' });
-      await pool.query('INSERT INTO scores (name, score, difficulty, date) VALUES ($1, 0, $2, $3)', [n, 'normal', Date.now()]);
       res.json({ ok: true });
     } else {
       const scores = loadScores();
       if (scores.some(x => x.name.toLowerCase() === n.toLowerCase())) return res.json({ ok: false, error: 'Bu isim zaten alinmis' });
-      scores.push({ name: n, score: 0, difficulty: 'normal', date: Date.now() });
-      saveScores(scores);
       res.json({ ok: true });
     }
   } catch (e) { res.status(500).json({ error: e.message }); }
