@@ -1,0 +1,100 @@
+const express = require('express');
+const cors = require('cors');
+const { Pool } = require('pg');
+const fs = require('fs');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const DATA_FILE = path.join(__dirname, 'scores.json');
+const useDB = !!process.env.DATABASE_URL;
+let pool;
+
+if (useDB) {
+  pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+  pool.query(`CREATE TABLE IF NOT EXISTS scores (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(20) NOT NULL UNIQUE,
+    score INTEGER NOT NULL DEFAULT 0,
+    difficulty VARCHAR(10) DEFAULT 'normal',
+    date BIGINT
+  )`).then(() => console.log('DB table ready')).catch(e => console.error('DB init error:', e.message));
+}
+
+app.use(cors());
+app.use(express.json());
+
+function loadScores() {
+  try { if (fs.existsSync(DATA_FILE)) return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch (e) {}
+  return [];
+}
+function saveScores(scores) { fs.writeFileSync(DATA_FILE, JSON.stringify(scores)); }
+
+app.post('/api/score', async (req, res) => {
+  try {
+    const { name, score, difficulty } = req.body;
+    if (!name || score === undefined) return res.status(400).json({ error: 'name ve score gerekli' });
+    const n = String(name).slice(0, 20), s = Number(score), d = difficulty || 'normal';
+
+    if (useDB) {
+      await pool.query(
+        `INSERT INTO scores (name, score, difficulty, date) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (name) DO UPDATE SET score = GREATEST(scores.score, $2), difficulty = $3, date = $4`,
+        [n, s, d, Date.now()]
+      );
+      const r = await pool.query('SELECT COUNT(*) as rank FROM scores WHERE score > (SELECT score FROM scores WHERE name=$1)', [n]);
+      res.json({ ok: true, rank: Number(r.rows[0].rank) + 1 });
+    } else {
+      const scores = loadScores();
+      const entry = { name: n, score: s, difficulty: d, date: Date.now() };
+      const existing = scores.findIndex(x => x.name === n);
+      if (existing >= 0) { if (s > scores[existing].score) scores[existing] = entry; }
+      else scores.push(entry);
+      scores.sort((a, b) => b.score - a.score);
+      if (scores.length > 500) scores.length = 500;
+      saveScores(scores);
+      res.json({ ok: true, rank: scores.findIndex(x => x.name === n) + 1 });
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/leaderboard', async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 50, 100);
+    if (useDB) {
+      const r = await pool.query('SELECT name, score, difficulty, date FROM scores ORDER BY score DESC LIMIT $1', [limit]);
+      res.json(r.rows);
+    } else {
+      res.json(loadScores().slice(0, limit));
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/rank/:name', async (req, res) => {
+  try {
+    if (useDB) {
+      const r = await pool.query('SELECT score FROM scores WHERE name=$1', [req.params.name]);
+      if (r.rows.length === 0) return res.json({ rank: 0, score: 0 });
+      const cnt = await pool.query('SELECT COUNT(*) as rank FROM scores WHERE score > $1', [r.rows[0].score]);
+      res.json({ rank: Number(cnt.rows[0].rank) + 1, score: r.rows[0].score });
+    } else {
+      const scores = loadScores();
+      const idx = scores.findIndex(x => x.name === req.params.name);
+      if (idx < 0) return res.json({ rank: 0, score: 0 });
+      res.json({ rank: idx + 1, score: scores[idx].score });
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/', async (req, res) => {
+  try {
+    if (useDB) {
+      const r = await pool.query('SELECT COUNT(*) as cnt FROM scores');
+      res.json({ status: 'Flappy Bird Leaderboard Server', db: 'PostgreSQL', players: Number(r.rows[0].cnt) });
+    } else {
+      res.json({ status: 'Flappy Bird Leaderboard Server', db: 'JSON', players: loadScores().length });
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.listen(PORT, () => console.log('Server running on port ' + PORT + ' | DB: ' + (useDB ? 'PostgreSQL' : 'JSON file')));
