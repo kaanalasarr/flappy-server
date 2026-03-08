@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gizlilik Politikası - Flappy Bird</title>
+<style>
+  body{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:0 20px;color:#333;line-height:1.7}
+  h1{color:#1976d2}
+  h2{color:#1976d2;margin-top:30px}
+  p{margin:10px 0}
+</style>
+</head>
+<body>
+<h1>Gizlilik Politikası</h1>
+<p><strong>Son güncelleme:</strong> Mart 2026</p>
+
+<p>Bu gizlilik politikası, Flappy Bird uygulamasının kullanıcı verilerini nasıl topladığını ve kullandığını açıklamaktadır.</p>
+
+<h2>Toplanan Veriler</h2>
+<p>Uygulama yalnızca aşağıdaki verileri toplar:</p>
+<ul>
+  <li><strong>Kullanıcı adı:</strong> Oyuncu tarafından seçilen takma ad (gerçek ad değil)</li>
+  <li><strong>Oyun skoru:</strong> Oyunda elde edilen en yüksek puan</li>
+</ul>
+
+<h2>Verilerin Kullanımı</h2>
+<p>Toplanan veriler yalnızca global skor tablosunu görüntülemek amacıyla kullanılır. Veriler üçüncü taraflarla paylaşılmaz, satılmaz veya kiralanmaz.</p>
+
+<h2>Veri Güvenliği</h2>
+<p>Kullanıcı adı ve skor bilgileri güvenli bir sunucuda saklanır. Kişisel kimlik bilgisi (ad, soyad, e-posta, telefon vb.) toplanmaz.</p>
+
+<h2>Çocukların Gizliliği</h2>
+<p>Uygulama, 13 yaş altı çocuklardan bilerek kişisel bilgi toplamaz.</p>
+
+<h2>Reklam</h2>
+<p>Bu uygulama herhangi bir reklam içermemektedir.</p>
+
+<h2>İzinler</h2>
+<p>Uygulama yalnızca internet bağlantısı iznine ihtiyaç duyar. Bu izin, skor tablosuna erişim için kullanılır.</p>
+
+<h2>Değişiklikler</h2>
+<p>Bu politika güncellenebilir. Değişiklikler bu sayfada yayınlanacaktır.</p>
+
+<h2>İletişim</h2>
+<p>Sorularınız için: <a href="mailto:alasarkaan47@gmail.com">alasarkaan47@gmail.com</a></p>
+</body>
+</html>
