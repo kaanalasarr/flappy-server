@@ -73,7 +73,7 @@ app.post('/api/score', async (req, res) => {
 
 app.get('/api/leaderboard', async (req, res) => {
   try {
-    const limit = Math.min(Number(req.query.limit) || 50, 100);
+    const limit = Math.min(Number(req.query.limit) || 50, 500);
     const diff = req.query.difficulty;
     if (useDB) {
       let r;
@@ -134,6 +134,19 @@ app.post('/api/register', async (req, res) => {
       const scores = loadScores();
       if (scores.some(x => x.name.toLowerCase() === n.toLowerCase())) return res.json({ ok: false, error: 'Bu isim zaten alinmis' });
       res.json({ ok: true });
+    }
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/stats', async (req, res) => {
+  try {
+    if (useDB) {
+      const r = await pool.query('SELECT COUNT(DISTINCT name) as cnt FROM scores');
+      res.json({ totalUsers: Number(r.rows[0].cnt) });
+    } else {
+      const scores = loadScores();
+      const unique = new Set(scores.map(x => x.name));
+      res.json({ totalUsers: unique.size });
     }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
